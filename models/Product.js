@@ -1,14 +1,43 @@
 import mongoose from 'mongoose';
 
-const productSchema = new mongoose.Schema({
-  name: {
+// Schema for localized strings
+const localizedStringSchema = new mongoose.Schema({
+  en: {
     type: String,
     required: true,
     trim: true
   },
+  vi: {
+    type: String,
+    required: true,
+    trim: true
+  }
+}, { _id: false });
+
+// Schema for product specifications
+const productSpecificationSchema = new mongoose.Schema({
+  key: {
+    type: localizedStringSchema,
+    required: true
+  },
+  value: {
+    type: localizedStringSchema,
+    required: true
+  }
+}, { _id: false });
+
+const productSchema = new mongoose.Schema({
+  name: {
+    type: localizedStringSchema,
+    required: true
+  },
   price: {
     type: Number,
     required: true,
+    min: 0
+  },
+  originalPrice: {
+    type: Number,
     min: 0
   },
   image: {
@@ -19,23 +48,20 @@ const productSchema = new mongoose.Schema({
     type: String
   }],
   shortDescription: {
-    type: String,
-    required: true,
-    trim: true
+    type: localizedStringSchema,
+    required: true
   },
   detailDescription: {
-    type: String,
-    required: true,
-    trim: true
+    type: localizedStringSchema,
+    required: true
   },
   sizes: [{
     type: String,
     required: true
   }],
   specifications: {
-    type: Map,
-    of: String,
-    default: {}
+    type: [productSpecificationSchema],
+    default: []
   },
   inStock: {
     type: Boolean,
@@ -52,7 +78,12 @@ const productSchema = new mongoose.Schema({
 });
 
 // Add index for better search performance
-productSchema.index({ name: 'text', shortDescription: 'text' });
+productSchema.index({ 
+  'name.en': 'text', 
+  'name.vi': 'text', 
+  'shortDescription.en': 'text', 
+  'shortDescription.vi': 'text' 
+});
 
 const Product = mongoose.model('Product', productSchema);
 

@@ -5,15 +5,28 @@ import { authenticateAdmin, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Helper function to return product in original DB format
+const formatProduct = (product) => {
+  return product.toObject();
+};
+
 // Validation middleware
 const validateProduct = [
-  body('name').notEmpty().trim().withMessage('Product name is required'),
+  body('name.en').notEmpty().trim().withMessage('Product name (English) is required'),
+  body('name.vi').notEmpty().trim().withMessage('Product name (Vietnamese) is required'),
   body('price').isNumeric().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('image').notEmpty().withMessage('Product image is required'),
-  body('shortDescription').notEmpty().trim().withMessage('Short description is required'),
-  body('detailDescription').notEmpty().trim().withMessage('Detail description is required'),
+  body('shortDescription.en').notEmpty().trim().withMessage('Short description (English) is required'),
+  body('shortDescription.vi').notEmpty().trim().withMessage('Short description (Vietnamese) is required'),
+  body('detailDescription.en').notEmpty().trim().withMessage('Detail description (English) is required'),
+  body('detailDescription.vi').notEmpty().trim().withMessage('Detail description (Vietnamese) is required'),
   body('sizes').isArray({ min: 1 }).withMessage('At least one size is required'),
-  body('stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer')
+  body('stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
+  body('specifications').optional().isArray().withMessage('Specifications must be an array'),
+  body('specifications.*.key.en').optional().notEmpty().withMessage('Specification key (English) is required'),
+  body('specifications.*.key.vi').optional().notEmpty().withMessage('Specification key (Vietnamese) is required'),
+  body('specifications.*.value.en').optional().notEmpty().withMessage('Specification value (English) is required'),
+  body('specifications.*.value.vi').optional().notEmpty().withMessage('Specification value (Vietnamese) is required')
 ];
 
 // GET /api/products - Get all products
@@ -39,8 +52,11 @@ router.get('/', async (req, res) => {
 
     const total = await Product.countDocuments(query);
 
+    // Return products in original DB format
+    const formattedProducts = products.map(product => formatProduct(product));
+
     res.json({
-      products,
+      products: formattedProducts,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total
@@ -57,7 +73,10 @@ router.get('/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    res.json(product);
+
+    // Return product in original DB format
+    const formattedProduct = formatProduct(product);
+    res.json(formattedProduct);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -73,7 +92,10 @@ router.post('/', authenticateAdmin, requireAdmin, validateProduct, async (req, r
 
     const product = new Product(req.body);
     const savedProduct = await product.save();
-    res.status(201).json(savedProduct);
+    
+    // Return product in original DB format
+    const formattedProduct = formatProduct(savedProduct);
+    res.status(201).json(formattedProduct);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -97,7 +119,9 @@ router.put('/:id', authenticateAdmin, requireAdmin, validateProduct, async (req,
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    res.json(product);
+    // Return product in original DB format
+    const formattedProduct = formatProduct(product);
+    res.json(formattedProduct);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -138,7 +162,9 @@ router.patch('/:id/stock', authenticateAdmin, requireAdmin, async (req, res) => 
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    res.json(product);
+    // Return product in original DB format
+    const formattedProduct = formatProduct(product);
+    res.json(formattedProduct);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

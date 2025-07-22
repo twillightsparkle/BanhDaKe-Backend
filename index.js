@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import productRoutes from './routes/products.js';
 import orderRoutes from './routes/orders.js';
 import authRoutes from './routes/auth.js';
+import shippingRoutes from './routes/shipping.js';
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/shipping', shippingRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {

@@ -92,14 +92,16 @@ router.post('/', validateOrder, async (req, res) => {
 
       if (!product.inStock || product.stock < item.quantity) {
         return res.status(400).json({ 
-          error: `Insufficient stock for product ${product.name}` 
+          error: `Insufficient stock for product ${product.name.en || product.name.vi || product.name}` 
         });
       }
 
       const itemTotal = product.price * item.quantity;
-      total += itemTotal;      orderItems.push({
+      total += itemTotal;
+
+      orderItems.push({
         productId: product._id,
-        productName: product.name,
+        productName: product.name.en || product.name.vi || product.name, // Use English name or fallback
         quantity: item.quantity,
         price: product.price,
         selectedSize: item.selectedSize
