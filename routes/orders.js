@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
+import ShippingFee from '../models/ShippingFee.js';
 import { authenticateAdmin, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -14,7 +15,8 @@ const validateOrder = [
   body('products.*.selectedSize').notEmpty().withMessage('Selected size is required'),
   body('customerInfo.name').notEmpty().trim().withMessage('Customer name is required'),
   body('customerInfo.email').isEmail().withMessage('Valid email is required'),
-  body('customerInfo.address').notEmpty().trim().withMessage('Customer address is required')
+  body('customerInfo.address').notEmpty().trim().withMessage('Customer address is required'),
+  body('shippingCountry').notEmpty().withMessage('Shipping country is required')
 ];
 
 // GET /api/orders - Get all orders (Admin only)
@@ -76,10 +78,23 @@ router.post('/', validateOrder, async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { products, customerInfo } = req.body;
+    const { products, customerInfo, shippingCountry } = req.body;
 
-    // Validate products and calculate total
+    // Get shipping fee data
+    const shippingFeeData = await ShippingFee.findOne({ 
+      country: shippingCountry.toUpperCase(), 
+      isActive: true 
+    });
+    
+    if (!shippingFeeData) {
+      return res.status(400).json({ 
+        error: `Shipping to ${shippingCountry} is not available` 
+      });
+    }
+
+    // Validate products, calculate total and weight
     let total = 0;
+    let totalWeight = 0;
     const orderItems = [];
 
     for (const item of products) {
@@ -99,9 +114,13 @@ router.post('/', validateOrder, async (req, res) => {
       const itemTotal = product.price * item.quantity;
       total += itemTotal;
 
+      // Calculate weight (convert from grams to kg)
+      const productWeightInG = (product.weight || 500) ; // Default 500g if weight not specified
+      totalWeight += productWeightInG * item.quantity;
+
       orderItems.push({
         productId: product._id,
-        productName: product.name.en || product.name.vi || product.name, // Use English name or fallback
+        productName: product.name.en || product.name.vi || product.name,
         quantity: item.quantity,
         price: product.price,
         selectedSize: item.selectedSize
@@ -114,9 +133,15 @@ router.post('/', validateOrder, async (req, res) => {
       });
     }
 
+    // Calculate shipping fee: baseFee + (weightInG/1000 * perKgRate)
+    const shippingFee = shippingFeeData.baseFee + (totalWeight/1000 * shippingFeeData.perKgRate);
+
     const order = new Order({
       products: orderItems,
       total,
+      shippingFee,
+      shippingCountry: shippingFeeData.country,
+      totalWeight,
       customerInfo,
       status: 'Pending'
     });

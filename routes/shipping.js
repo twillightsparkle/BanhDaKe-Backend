@@ -18,23 +18,18 @@ router.get('/rates/:country', async (req, res) => {
     
     if (!shippingFee) {
       return res.status(404).json({
-        success: false,
-        message: `Shipping to ${country} is not available`
+        error: `Shipping to ${country} is not available`
       });
     }
     
     res.json({
-      success: true,
-      data: {
-        country: shippingFee.country,
-        baseFee: shippingFee.baseFee,
-        perKgRate: shippingFee.perKgRate
-      }
+      country: shippingFee.country,
+      baseFee: shippingFee.baseFee,
+      perKgRate: shippingFee.perKgRate
     });
   } catch (error) {
     res.status(500).json({
-      success: false,
-      message: 'Error fetching shipping rates'
+      error: 'Error fetching shipping rates'
     });
   }
 });
@@ -47,14 +42,26 @@ router.get('/countries', async (req, res) => {
       'country baseFee perKgRate'
     ).sort({ country: 1 });
     
-    res.json({
-      success: true,
-      data: countries
-    });
+    res.json(countries);
   } catch (error) {
     res.status(500).json({
-      success: false,
-      message: 'Error fetching shipping countries'
+      error: 'Error fetching shipping countries'
+    });
+  }
+});
+
+// GET /api/shipping/fees - Get all shipping fees (for users)
+router.get('/fees', async (req, res) => {
+  try {
+    const shippingFees = await ShippingFee.find(
+      { isActive: true },
+      'country baseFee perKgRate'
+    ).sort({ country: 1 });
+    
+    res.json(shippingFees);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Error fetching shipping fees'
     });
   }
 });
@@ -82,7 +89,6 @@ router.get('/admin', authenticateAdmin, async (req, res) => {
     ]);
     
     res.json({
-      success: true,
       data: shippingFees,
       pagination: {
         currentPage: parseInt(page),
@@ -93,8 +99,7 @@ router.get('/admin', authenticateAdmin, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({
-      success: false,
-      message: 'Error fetching shipping fees'
+      error: 'Error fetching shipping fees'
     });
   }
 });
@@ -106,8 +111,7 @@ router.post('/admin', authenticateAdmin, async (req, res) => {
     
     if (!country || baseFee === undefined || perKgRate === undefined) {
       return res.status(400).json({
-        success: false,
-        message: 'Country, baseFee, and perKgRate are required'
+        error: 'Country, baseFee, and perKgRate are required'
       });
     }
     
@@ -120,22 +124,16 @@ router.post('/admin', authenticateAdmin, async (req, res) => {
     
     await shippingFee.save();
     
-    res.status(201).json({
-      success: true,
-      data: shippingFee,
-      message: 'Shipping fee created successfully'
-    });
+    res.status(201).json(shippingFee);
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({
-        success: false,
-        message: 'Shipping fee for this country already exists'
+        error: 'Shipping fee for this country already exists'
       });
     }
     
     res.status(400).json({
-      success: false,
-      message: error.message
+      error: error.message
     });
   }
 });
@@ -147,19 +145,14 @@ router.get('/admin/:id', authenticateAdmin, async (req, res) => {
     
     if (!shippingFee) {
       return res.status(404).json({
-        success: false,
-        message: 'Shipping fee not found'
+        error: 'Shipping fee not found'
       });
     }
     
-    res.json({
-      success: true,
-      data: shippingFee
-    });
+    res.json(shippingFee);
   } catch (error) {
     res.status(500).json({
-      success: false,
-      message: 'Error fetching shipping fee'
+      error: 'Error fetching shipping fee'
     });
   }
 });
@@ -183,20 +176,14 @@ router.put('/admin/:id', authenticateAdmin, async (req, res) => {
     
     if (!shippingFee) {
       return res.status(404).json({
-        success: false,
-        message: 'Shipping fee not found'
+        error: 'Shipping fee not found'
       });
     }
     
-    res.json({
-      success: true,
-      data: shippingFee,
-      message: 'Shipping fee updated successfully'
-    });
+    res.json(shippingFee);
   } catch (error) {
     res.status(400).json({
-      success: false,
-      message: error.message
+      error: error.message
     });
   }
 });
@@ -208,19 +195,14 @@ router.delete('/admin/:id', authenticateAdmin, async (req, res) => {
     
     if (!shippingFee) {
       return res.status(404).json({
-        success: false,
-        message: 'Shipping fee not found'
+        error: 'Shipping fee not found'
       });
     }
     
-    res.json({
-      success: true,
-      message: 'Shipping fee deleted successfully'
-    });
+    res.json({ message: 'Shipping fee deleted successfully' });
   } catch (error) {
     res.status(500).json({
-      success: false,
-      message: 'Error deleting shipping fee'
+      error: 'Error deleting shipping fee'
     });
   }
 });
@@ -232,23 +214,17 @@ router.patch('/admin/:id/toggle', authenticateAdmin, async (req, res) => {
     
     if (!shippingFee) {
       return res.status(404).json({
-        success: false,
-        message: 'Shipping fee not found'
+        error: 'Shipping fee not found'
       });
     }
     
     shippingFee.isActive = !shippingFee.isActive;
     await shippingFee.save();
     
-    res.json({
-      success: true,
-      data: shippingFee,
-      message: `Shipping fee ${shippingFee.isActive ? 'activated' : 'deactivated'} successfully`
-    });
+    res.json(shippingFee);
   } catch (error) {
     res.status(500).json({
-      success: false,
-      message: 'Error toggling shipping fee status'
+      error: 'Error toggling shipping fee status'
     });
   }
 });

@@ -56,6 +56,23 @@ const orderSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  shippingFee: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  shippingCountry: {
+    type: String,
+    required: true,
+    trim: true,
+    uppercase: true
+  },
+  totalWeight: {
+    type: Number,
+    required: true,
+    min: 0,
+    default: 0
+  },
   customerInfo: {
     type: customerInfoSchema,
     required: true

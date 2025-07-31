@@ -63,6 +63,11 @@ const productSchema = new mongoose.Schema({
     type: [productSpecificationSchema],
     default: []
   },
+  weight: { // in grams
+    type: Number,
+    required: true,
+    min: 0
+  },
   inStock: {
     type: Boolean,
     default: true
