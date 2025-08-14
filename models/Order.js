@@ -20,6 +20,10 @@ const orderItemSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  selectedColor: {
+    type: String,
+    required: true
+  },
   selectedSize: {
     type: String,
     required: true
@@ -76,6 +80,11 @@ const orderSchema = new mongoose.Schema({
   customerInfo: {
     type: customerInfoSchema,
     required: true
+  },
+  firebaseUid: {
+    type: String,
+    sparse: true, // Allows multiple null values but unique non-null values
+    index: true   // For faster queries by Firebase UID
   },
   status: {
     type: String,

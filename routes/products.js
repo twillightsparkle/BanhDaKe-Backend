@@ -14,19 +14,26 @@ const formatProduct = (product) => {
 const validateProduct = [
   body('name.en').notEmpty().trim().withMessage('Product name (English) is required'),
   body('name.vi').notEmpty().trim().withMessage('Product name (Vietnamese) is required'),
-  body('price').isNumeric().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('image').notEmpty().withMessage('Product image is required'),
-  body('shortDescription.en').notEmpty().trim().withMessage('Short description (English) is required'),
-  body('shortDescription.vi').notEmpty().trim().withMessage('Short description (Vietnamese) is required'),
+  body('images').optional().isArray().withMessage('Images must be an array'),
+  body('shortDescription.en').optional().isString().trim().withMessage('Short description (English) must be a string'),
+  body('shortDescription.vi').optional().isString().trim().withMessage('Short description (Vietnamese) must be a string'),
   body('detailDescription.en').notEmpty().trim().withMessage('Detail description (English) is required'),
   body('detailDescription.vi').notEmpty().trim().withMessage('Detail description (Vietnamese) is required'),
-  body('sizes').isArray({ min: 1 }).withMessage('At least one size is required'),
-  body('stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
+  body('weight').isNumeric().isFloat({ min: 0 }).withMessage('Weight must be a positive number (in kg)'),
+  body('variations').isArray({ min: 1 }).withMessage('At least one variation is required'),
+  body('variations.*.color.en').notEmpty().withMessage('Variation color (English) is required'),
+  body('variations.*.color.vi').notEmpty().withMessage('Variation color (Vietnamese) is required'),
+  body('variations.*.image').optional().isString().withMessage('Variation image must be a string'),
+  body('variations.*.sizeOptions').isArray({ min: 1 }).withMessage('At least one size option is required per variation'),
+  body('variations.*.sizeOptions.*.size').isNumeric().withMessage('Size must be a number'),
+  body('variations.*.sizeOptions.*.price').isNumeric().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
+  body('variations.*.sizeOptions.*.stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
   body('specifications').optional().isArray().withMessage('Specifications must be an array'),
-  body('specifications.*.key.en').optional().notEmpty().withMessage('Specification key (English) is required'),
-  body('specifications.*.key.vi').optional().notEmpty().withMessage('Specification key (Vietnamese) is required'),
-  body('specifications.*.value.en').optional().notEmpty().withMessage('Specification value (English) is required'),
-  body('specifications.*.value.vi').optional().notEmpty().withMessage('Specification value (Vietnamese) is required')
+  body('specifications.*.key.en').optional().isString().notEmpty().withMessage('Specification key (English) is required'),
+  body('specifications.*.key.vi').optional().isString().notEmpty().withMessage('Specification key (Vietnamese) is required'),
+  body('specifications.*.value.en').optional().isString().notEmpty().withMessage('Specification value (English) is required'),
+  body('specifications.*.value.vi').optional().isString().notEmpty().withMessage('Specification value (Vietnamese) is required')
 ];
 
 // GET /api/products - Get all products
@@ -140,30 +147,41 @@ router.delete('/:id', authenticateAdmin, requireAdmin, async (req, res) => {
   }
 });
 
-// PATCH /api/products/:id/stock - Update stock (Admin only)
+// PATCH /api/products/:id/stock - Update stock for specific variation and size (Admin only)
 router.patch('/:id/stock', authenticateAdmin, requireAdmin, async (req, res) => {
   try {
-    const { stock } = req.body;
+    const { variationIndex, sizeOptionIndex, stock } = req.body;
     
     if (typeof stock !== 'number' || stock < 0) {
       return res.status(400).json({ error: 'Stock must be a non-negative number' });
     }
 
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      { 
-        stock,
-        inStock: stock > 0
-      },
-      { new: true }
-    );
+    if (typeof variationIndex !== 'number' || typeof sizeOptionIndex !== 'number') {
+      return res.status(400).json({ error: 'Variation index and size option index are required' });
+    }
 
+    const product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
+    if (!product.variations[variationIndex] || !product.variations[variationIndex].sizeOptions[sizeOptionIndex]) {
+      return res.status(400).json({ error: 'Invalid variation or size option index' });
+    }
+
+    // Update the specific size option stock
+    product.variations[variationIndex].sizeOptions[sizeOptionIndex].stock = stock;
+    
+    // Update overall inStock status based on all size options
+    const hasStock = product.variations.some(variation => 
+      variation.sizeOptions.some(sizeOption => sizeOption.stock > 0)
+    );
+    product.inStock = hasStock;
+
+    const savedProduct = await product.save();
+
     // Return product in original DB format
-    const formattedProduct = formatProduct(product);
+    const formattedProduct = formatProduct(savedProduct);
     res.json(formattedProduct);
   } catch (error) {
     res.status(500).json({ error: error.message });

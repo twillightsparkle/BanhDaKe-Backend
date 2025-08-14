@@ -1,5 +1,22 @@
 import jwt from 'jsonwebtoken';
+import admin from 'firebase-admin';
 import Admin from '../models/Admin.js';
+
+import serviceAccount from "../banhdake-b24a5-firebase-adminsdk-fbsvc-2473326ae2.json" assert { type: "json" };
+
+// Initialize Firebase Admin SDK (only if not already initialized)
+if (!admin.apps.length) {
+  try {
+    // You can initialize with service account key file or environment variables
+    
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  } catch (error) {
+    console.warn('Firebase Admin SDK initialization failed:', error.message);
+    console.warn('User authentication will not work without proper Firebase configuration');
+  }
+}
 
 // Middleware to verify JWT token and authenticate admin
 export const authenticateAdmin = async (req, res, next) => {
@@ -39,4 +56,35 @@ export const requireAdmin = (req, res, next) => {
     return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
   }
   next();
+};
+
+// Middleware to verify Firebase ID token and authenticate user
+export const authenticateUser = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+
+    // Verify Firebase ID token
+    if (!admin.apps.length) {
+      throw new Error('Firebase Admin SDK not initialized');
+    }
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    
+    // Add user info to request object
+    req.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      emailVerified: decodedToken.email_verified,
+      name: decodedToken.name,
+      picture: decodedToken.picture
+    };
+
+    next();
+  } catch (error) {
+    console.error('Firebase token verification failed:', error);
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
 };

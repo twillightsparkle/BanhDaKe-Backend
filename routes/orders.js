@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import ShippingFee from '../models/ShippingFee.js';
-import { authenticateAdmin, requireAdmin } from '../middleware/auth.js';
+import { authenticateAdmin, requireAdmin, authenticateUser } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -92,7 +92,7 @@ router.post('/', validateOrder, async (req, res) => {
       });
     }
 
-    // Validate products, calculate total and weight
+  // Validate products, calculate total and total weight (in kilograms)
     let total = 0;
     let totalWeight = 0;
     const orderItems = [];
@@ -114,9 +114,9 @@ router.post('/', validateOrder, async (req, res) => {
       const itemTotal = product.price * item.quantity;
       total += itemTotal;
 
-      // Calculate weight (convert from grams to kg)
-      const productWeightInG = (product.weight || 500) ; // Default 500g if weight not specified
-      totalWeight += productWeightInG * item.quantity;
+  // Calculate weight in kg (product.weight is stored in kilograms)
+  const productWeightKg = (product.weight ?? 0.5); // Default 0.5 kg if weight not specified
+  totalWeight += productWeightKg * item.quantity;
 
       orderItems.push({
         productId: product._id,
@@ -133,8 +133,8 @@ router.post('/', validateOrder, async (req, res) => {
       });
     }
 
-    // Calculate shipping fee: baseFee + (weightInG/1000 * perKgRate)
-    const shippingFee = shippingFeeData.baseFee + (totalWeight/1000 * shippingFeeData.perKgRate);
+  // Calculate shipping fee: baseFee + (totalWeightInKg * perKgRate)
+  const shippingFee = shippingFeeData.baseFee + (totalWeight * shippingFeeData.perKgRate);
 
     const order = new Order({
       products: orderItems,
@@ -231,6 +231,114 @@ router.get('/stats/summary', async (req, res) => {
       shippedOrders,
       completedOrders,
       totalRevenue: totalRevenue[0]?.total || 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============== USER ENDPOINTS ==============
+
+// GET /api/orders/user/my-orders - Get current user's orders
+router.get('/user/my-orders', authenticateUser, async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status } = req.query;
+    const userEmail = req.user.email;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: 'User email not found in token' });
+    }
+
+    const query = {
+      'customerInfo.email': userEmail
+    };
+
+    // Filter by status if provided
+    if (status) {
+      query.status = status;
+    }
+
+    const orders = await Order.find(query)
+      .populate('products.productId', 'name image')
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Order.countDocuments(query);
+
+    res.json({
+      orders,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
+      total,
+      userEmail
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/orders/user/:orderId - Get specific order by ID (only if user owns it)
+router.get('/user/:orderId', authenticateUser, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const orderId = req.params.orderId;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: 'User email not found in token' });
+    }
+
+    const order = await Order.findOne({
+      _id: orderId,
+      'customerInfo.email': userEmail
+    }).populate('products.productId', 'name image price');
+
+    if (!order) {
+      return res.status(404).json({ 
+        error: 'Order not found or you do not have permission to view this order' 
+      });
+    }
+
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/orders/user/stats/summary - Get user's order statistics
+router.get('/user/stats/summary', authenticateUser, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: 'User email not found in token' });
+    }
+
+    const query = { 'customerInfo.email': userEmail };
+
+    const totalOrders = await Order.countDocuments(query);
+    const pendingOrders = await Order.countDocuments({ ...query, status: 'Pending' });
+    const shippedOrders = await Order.countDocuments({ ...query, status: 'Shipped' });
+    const completedOrders = await Order.countDocuments({ ...query, status: 'Completed' });
+
+    const totalSpent = await Order.aggregate([
+      { $match: query },
+      { $group: { _id: null, total: { $sum: { $add: ['$total', '$shippingFee'] } } } }
+    ]);
+
+    const recentOrders = await Order.find(query)
+      .populate('products.productId', 'name image')
+      .limit(5)
+      .sort({ createdAt: -1 });
+
+    res.json({
+      totalOrders,
+      pendingOrders,
+      shippedOrders,
+      completedOrders,
+      totalSpent: totalSpent[0]?.total || 0,
+      recentOrders,
+      userEmail
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
