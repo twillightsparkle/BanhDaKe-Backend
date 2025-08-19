@@ -11,12 +11,17 @@ const router = express.Router();
 const validateOrder = [
   body('products').isArray({ min: 1 }).withMessage('At least one product is required'),
   body('products.*.productId').notEmpty().withMessage('Product ID is required'),
+  body('products.*.productName').notEmpty().withMessage('Product name is required').bail().isString().trim(),
   body('products.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-  body('products.*.selectedSize').notEmpty().withMessage('Selected size is required'),
-  body('customerInfo.name').notEmpty().trim().withMessage('Customer name is required'),
+  body('products.*.price').isNumeric().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
+  body('products.*.selectedColor').notEmpty().withMessage('Selected color is required').bail().isString().trim(),
+  body('products.*.selectedSize').notEmpty().withMessage('Selected size is required').bail().isString().trim(),
+  body('customerInfo.name').notEmpty().withMessage('Customer name is required').bail().isString().trim(),
   body('customerInfo.email').isEmail().withMessage('Valid email is required'),
-  body('customerInfo.address').notEmpty().trim().withMessage('Customer address is required'),
-  body('shippingCountry').notEmpty().withMessage('Shipping country is required')
+  body('customerInfo.address').notEmpty().withMessage('Customer address is required').bail().isString().trim(),
+  body('customerInfo.phone').optional().isString().trim().withMessage('Phone must be a string'),
+  body('shippingCountry').notEmpty().withMessage('Shipping country is required').bail().isString().trim(),
+  body('firebaseUid').optional().isString().trim().withMessage('Firebase UID must be a string')
 ];
 
 // GET /api/orders - Get all orders (Admin only)
@@ -105,13 +110,35 @@ router.post('/', validateOrder, async (req, res) => {
         });
       }
 
-      if (!product.inStock || product.stock < item.quantity) {
+      // Find the specific variation and size option for this order item
+      const selectedVariation = product.variations.find(variation => 
+        variation.color.en === item.selectedColor || variation.color.vi === item.selectedColor
+      );
+
+      if (!selectedVariation) {
         return res.status(400).json({ 
-          error: `Insufficient stock for product ${product.name.en || product.name.vi || product.name}` 
+          error: `Color "${item.selectedColor}" not available for product ${product.name.en || product.name.vi}` 
         });
       }
 
-      const itemTotal = product.price * item.quantity;
+      const selectedSizeOption = selectedVariation.sizeOptions.find(sizeOption => 
+        sizeOption.size.toString() === item.selectedSize.toString()
+      );
+
+      if (!selectedSizeOption) {
+        return res.status(400).json({ 
+          error: `Size "${item.selectedSize}" not available for color "${item.selectedColor}" of product ${product.name.en || product.name.vi}` 
+        });
+      }
+
+      // Check stock for the specific variation and size
+      if (!product.inStock || selectedSizeOption.stock < item.quantity) {
+        return res.status(400).json({ 
+          error: `Insufficient stock for product ${product.name.en || product.name.vi} (${item.selectedColor}, size ${item.selectedSize}). Available: ${selectedSizeOption.stock}` 
+        });
+      }
+
+      const itemTotal = selectedSizeOption.price * item.quantity;
       total += itemTotal;
 
   // Calculate weight in kg (product.weight is stored in kilograms)
@@ -122,15 +149,29 @@ router.post('/', validateOrder, async (req, res) => {
         productId: product._id,
         productName: product.name.en || product.name.vi || product.name,
         quantity: item.quantity,
-        price: product.price,
+        price: selectedSizeOption.price, // Use price from the specific size option
+        selectedColor: item.selectedColor,
         selectedSize: item.selectedSize
       });
 
-      // Update product stock
-      await Product.findByIdAndUpdate(product._id, {
-        $inc: { stock: -item.quantity },
-        inStock: product.stock - item.quantity > 0
-      });
+      // Update stock for the specific variation and size option
+      const variationIndex = product.variations.findIndex(variation => 
+        variation.color.en === item.selectedColor || variation.color.vi === item.selectedColor
+      );
+      const sizeOptionIndex = product.variations[variationIndex].sizeOptions.findIndex(sizeOption => 
+        sizeOption.size.toString() === item.selectedSize.toString()
+      );
+
+      // Decrease stock for this specific size option
+      product.variations[variationIndex].sizeOptions[sizeOptionIndex].stock -= item.quantity;
+      
+      // Update overall inStock status based on all size options
+      const hasStock = product.variations.some(variation => 
+        variation.sizeOptions.some(sizeOption => sizeOption.stock > 0)
+      );
+      product.inStock = hasStock;
+
+      await product.save();
     }
 
   // Calculate shipping fee: baseFee + (totalWeightInKg * perKgRate)
@@ -198,11 +239,30 @@ router.delete('/:id', authenticateAdmin, requireAdmin, async (req, res) => {
       });
     }
 
-    // Restore product stock
+    // Restore product stock for specific variations and sizes
     for (const item of order.products) {
-      await Product.findByIdAndUpdate(item.productId, {
-        $inc: { stock: item.quantity }
-      });
+      const product = await Product.findById(item.productId);
+      if (product) {
+        const variationIndex = product.variations.findIndex(variation => 
+          variation.color.en === item.selectedColor || variation.color.vi === item.selectedColor
+        );
+        
+        if (variationIndex !== -1) {
+          const sizeOptionIndex = product.variations[variationIndex].sizeOptions.findIndex(sizeOption => 
+            sizeOption.size.toString() === item.selectedSize.toString()
+          );
+          
+          if (sizeOptionIndex !== -1) {
+            // Restore stock for this specific size option
+            product.variations[variationIndex].sizeOptions[sizeOptionIndex].stock += item.quantity;
+            
+            // Update overall inStock status
+            product.inStock = true; // Since we're adding stock back, product is now in stock
+            
+            await product.save();
+          }
+        }
+      }
     }
 
     await Order.findByIdAndDelete(req.params.id);
@@ -341,6 +401,28 @@ router.get('/user/stats/summary', authenticateUser, async (req, res) => {
       userEmail
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/orders/:id - Delete an order (Admin only)
+router.delete('/:id', authenticateAdmin, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find and delete the order
+    const order = await Order.findByIdAndDelete(id);
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json({ 
+      message: 'Order deleted successfully',
+      deletedOrder: order 
+    });
+  } catch (error) {
+    console.error('Error deleting order:', error);
     res.status(500).json({ error: error.message });
   }
 });
