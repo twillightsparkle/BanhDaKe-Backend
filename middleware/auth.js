@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import admin from 'firebase-admin';
 import Admin from '../models/Admin.js';
 
-import serviceAccount from "../firebaseServiceKey.json" assert { type: "json" };
+import serviceAccount from "../firebaseServiceKey.json" with { type: "json" };
 
 // Initialize Firebase Admin SDK (only if not already initialized)
 if (!admin.apps.length) {
