@@ -15,7 +15,7 @@ const validateOrder = [
   body('products.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
   body('products.*.price').isNumeric().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('products.*.selectedColor').notEmpty().withMessage('Selected color is required').bail().isString().trim(),
-  body('products.*.selectedSize').notEmpty().withMessage('Selected size is required').bail().isString().trim(),
+  body('products.*.selectedSize').notEmpty().withMessage('Selected size is required'),
   body('customerInfo.name').notEmpty().withMessage('Customer name is required').bail().isString().trim(),
   body('customerInfo.email').isEmail().withMessage('Valid email is required'),
   body('customerInfo.address').notEmpty().withMessage('Customer address is required').bail().isString().trim(),
@@ -122,7 +122,7 @@ router.post('/', validateOrder, async (req, res) => {
       }
 
       const selectedSizeOption = selectedVariation.sizeOptions.find(sizeOption => 
-        sizeOption.size.toString() === item.selectedSize.toString()
+        sizeOption.size.EU === item.selectedSize.EU && sizeOption.size.US === item.selectedSize.US
       );
 
       if (!selectedSizeOption) {
@@ -151,7 +151,7 @@ router.post('/', validateOrder, async (req, res) => {
         quantity: item.quantity,
         price: selectedSizeOption.price, // Use price from the specific size option
         selectedColor: item.selectedColor,
-        selectedSize: item.selectedSize
+        selectedSize: JSON.stringify(item.selectedSize)
       });
 
       // Update stock for the specific variation and size option
@@ -159,7 +159,7 @@ router.post('/', validateOrder, async (req, res) => {
         variation.color.en === item.selectedColor || variation.color.vi === item.selectedColor
       );
       const sizeOptionIndex = product.variations[variationIndex].sizeOptions.findIndex(sizeOption => 
-        sizeOption.size.toString() === item.selectedSize.toString()
+        sizeOption.size.EU === item.selectedSize.EU && sizeOption.size.US === item.selectedSize.US
       );
 
       // Decrease stock for this specific size option

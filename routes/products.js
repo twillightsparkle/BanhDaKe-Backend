@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Product from '../models/Product.js';
 import { authenticateAdmin, requireAdmin } from '../middleware/auth.js';
+import e from 'express';
 
 const router = express.Router();
 
@@ -26,7 +27,8 @@ const validateProduct = [
   body('variations.*.color.vi').notEmpty().withMessage('Variation color (Vietnamese) is required'),
   body('variations.*.image').optional().isString().withMessage('Variation image must be a string'),
   body('variations.*.sizeOptions').isArray({ min: 1 }).withMessage('At least one size option is required per variation'),
-  body('variations.*.sizeOptions.*.size').isNumeric().withMessage('Size must be a number'),
+  body('variations.*.sizeOptions.*.size.EU').isNumeric().withMessage('EU Size must be a number'),
+  body('variations.*.sizeOptions.*.size.US').isNumeric().withMessage('US Size must be a number'),
   body('variations.*.sizeOptions.*.price').isNumeric().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('variations.*.sizeOptions.*.stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
   body('specifications').optional().isArray().withMessage('Specifications must be an array'),
@@ -96,7 +98,7 @@ router.post('/', authenticateAdmin, requireAdmin, validateProduct, async (req, r
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-
+    
     const product = new Product(req.body);
     const savedProduct = await product.save();
     

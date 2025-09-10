@@ -11,10 +11,14 @@ const productSpecificationSchema = new mongoose.Schema({
   value: { type: localizedStringSchema, required: true }
 }, { _id: false });
 
+const sizeSchema = new mongoose.Schema({
+  EU: { type: Number, required: true },
+  US: { type: Number, required: true },
+});
 
 // Size option schema for each variation
 const sizeOptionSchema = new mongoose.Schema({
-  size: { type: Number, required: true },
+  size: { type: sizeSchema, required: true },
   price: { type: Number, required: true, min: 0 },
   stock: { type: Number, required: true, min: 0 }
 }, { _id: false });
@@ -50,4 +54,7 @@ productSchema.index({
 
 const Product = mongoose.model('Product', productSchema);
 
+const Size = mongoose.model('Size', sizeSchema);
+
+export { Product, Size };
 export default Product;
